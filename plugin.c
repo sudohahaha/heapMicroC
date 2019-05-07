@@ -40,9 +40,6 @@ typedef struct bucket_entry {
 }bucket_entry;
 
 
-
-
-
 typedef struct bucket_list {
 
     // uint32_t ctl;
@@ -55,7 +52,7 @@ typedef struct bucket_list {
 
 __shared __export __addr40 __emem bucket_list state_hashtable[STATE_TABLE_SIZE + 1];
 __shared __export __addr40 __emem uint32_t update_function_check;
-__shared __export __addr40 __emem uint32_t repeat;
+__shared __export __addr40 __emem uint32_t heap_size;
 int pif_plugin_state_update(EXTRACTED_HEADERS_T *headers,
 
                         MATCH_DATA_T *match_data)
@@ -80,10 +77,11 @@ int pif_plugin_state_update(EXTRACTED_HEADERS_T *headers,
     __addr40 uint32_t *key_addr;
 
     __xrw uint32_t key_val_rw[3];
-//    __xwrite uint32_t update_function_check_w;
 
 
     uint32_t i = 0;
+    uint32_t j = 0;
+    __xrw uint32_t heap_size_w = 0;
 
     
 
@@ -114,8 +112,9 @@ int pif_plugin_state_update(EXTRACTED_HEADERS_T *headers,
     update_hash_value = hash_me_crc32((void *)update_hash_key,sizeof(update_hash_key), 1);
 
     update_hash_value &= (STATE_TABLE_SIZE);
-
-    for (;i<BUCKET_SIZE;i++) {
+    
+    mem_write_atomic(&heap_size_w, &heap_size, sizeof(heap_size_w));
+    for (i = 0;i<BUCKET_SIZE;i++) {
         if (state_hashtable[update_hash_value].entry[i].key[0] == 0) {
             b_info = &state_hashtable[update_hash_value].entry[i].bucket_entry_info_value;
 
@@ -123,7 +122,12 @@ int pif_plugin_state_update(EXTRACTED_HEADERS_T *headers,
             break;
         }
     }
-
+    heap_size_w = 0;
+    for (j = 0;j<BUCKET_SIZE;j++) {
+        if(state_hashtable[update_hash_value].entry[i].key[0] != 0){
+            heap_size_w = heap_size_w + 1;
+        }
+    }
     /* If bucket full, drop */
 
     if (i == BUCKET_SIZE)
