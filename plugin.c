@@ -52,7 +52,7 @@ typedef struct bucket_list {
 
 __shared __export __addr40 __emem bucket_list state_hashtable[STATE_TABLE_SIZE + 1];
 __shared __export __addr40 __emem uint32_t update_function_check;
-__shared __export __addr40 __emem uint32_t heap_size;
+//__shared __export __addr40 __emem uint32_t heap_size;
 int pif_plugin_state_update(EXTRACTED_HEADERS_T *headers,
 
                         MATCH_DATA_T *match_data)
@@ -122,12 +122,12 @@ int pif_plugin_state_update(EXTRACTED_HEADERS_T *headers,
             break;
         }
     }
-    heap_size_w = 0;
-    for (j = 0;j<BUCKET_SIZE;j++) {
-        if(state_hashtable[update_hash_value].entry[i].key[0] != 0){
-            heap_size_w = heap_size_w + 1;
-        }
-    }
+//    heap_size_w = 0;
+//    for (j = 0;j<BUCKET_SIZE;j++) {
+//        if(state_hashtable[update_hash_value].entry[i].key[0] != 0){
+//            heap_size_w = heap_size_w + 1;
+//        }
+//    }
     /* If bucket full, drop */
 
     if (i == BUCKET_SIZE)
@@ -139,8 +139,8 @@ int pif_plugin_state_update(EXTRACTED_HEADERS_T *headers,
     mem_write_atomic(key_val_rw,(__addr40 void *)key_addr, sizeof(key_val_rw));
 //    mem_write_atomic(&i,&state_hashtable[update_hash_value].entry[i].test, sizeof(i));
     
-//    update_function_check_w = i + 1;//potential heap size
-//    mem_write_atomic(&update_function_check_w,&update_function_check, sizeof(update_function_check_w));
+    update_function_check_w = i + 1;//potential heap size
+    mem_write_atomic(&update_function_check_w,&update_function_check, sizeof(update_function_check_w));
 
     return PIF_PLUGIN_RETURN_FORWARD;
 
