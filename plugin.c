@@ -18,7 +18,7 @@
 #define BUCKET_SIZE 12
 
 
-#define STATE_TABLE_SIZE 0xF /* 16777200 state table entries available */
+#define STATE_TABLE_SIZE 0xFFFF /* 16777200 state table entries available */
 
 
 
@@ -55,7 +55,7 @@ typedef struct bucket_list {
 
 __shared __export __addr40 __emem bucket_list state_hashtable[STATE_TABLE_SIZE + 1];
 __shared __export __addr40 __emem uint32_t update_function_check;
-
+__shared __export __addr40 __emem uint32_t repeat;
 int pif_plugin_state_update(EXTRACTED_HEADERS_T *headers,
 
                         MATCH_DATA_T *match_data)
@@ -80,7 +80,7 @@ int pif_plugin_state_update(EXTRACTED_HEADERS_T *headers,
     __addr40 uint32_t *key_addr;
 
     __xrw uint32_t key_val_rw[3];
-
+//    __xwrite uint32_t update_function_check_w;
 
 
     uint32_t i = 0;
@@ -115,20 +115,13 @@ int pif_plugin_state_update(EXTRACTED_HEADERS_T *headers,
 
     update_hash_value &= (STATE_TABLE_SIZE);
 
-
-
     for (;i<BUCKET_SIZE;i++) {
-
         if (state_hashtable[update_hash_value].entry[i].key[0] == 0) {
-
             b_info = &state_hashtable[update_hash_value].entry[i].bucket_entry_info_value;
 
             key_addr =(__addr40 uint32_t *) state_hashtable[update_hash_value].entry[i].key;
-
             break;
-
         }
-
     }
 
     /* If bucket full, drop */
@@ -138,16 +131,12 @@ int pif_plugin_state_update(EXTRACTED_HEADERS_T *headers,
 
 
     tmp_b_info.hit_count = 1;
-
-
-
     mem_write_atomic(&tmp_b_info, b_info, sizeof(tmp_b_info));
-
     mem_write_atomic(key_val_rw,(__addr40 void *)key_addr, sizeof(key_val_rw));
 //    mem_write_atomic(&i,&state_hashtable[update_hash_value].entry[i].test, sizeof(i));
-    mem_incr32(&update_function_check);
-
-   
+    
+//    update_function_check_w = i + 1;//potential heap size
+//    mem_write_atomic(&update_function_check_w,&update_function_check, sizeof(update_function_check_w));
 
     return PIF_PLUGIN_RETURN_FORWARD;
 
@@ -170,7 +159,7 @@ int pif_plugin_lookup_state(EXTRACTED_HEADERS_T *headers, MATCH_DATA_T *match_da
 
     __addr40 bucket_entry_info *b_info;
 
-
+//    __xrw uint32_t repeat_w;
 
     uint32_t i;
     uint32_t hash_entry_full; 
@@ -205,20 +194,15 @@ int pif_plugin_lookup_state(EXTRACTED_HEADERS_T *headers, MATCH_DATA_T *match_da
 
     hash_entry_full = 1;
     flow_entry_found= 0;
-
+//    repeat_w = 0;
     for (i = 0; i < BUCKET_SIZE; i++) {
-
         mem_read_atomic(hash_key_r, state_hashtable[hash_value].entry[i].key, sizeof(hash_key_r)); /* TODO: Read whole bunch at a time */
-
-
-
+        
         if (hash_key_r[0] == 0) {
-	    hash_entry_full = 0;
+        hash_entry_full = 0;
             continue;
 
         }
-
-        
 
         if (hash_key_r[0] == hash_key[0] &&
 
@@ -229,7 +213,7 @@ int pif_plugin_lookup_state(EXTRACTED_HEADERS_T *headers, MATCH_DATA_T *match_da
 
             __xrw uint32_t count;
 
-	    flow_entry_found = 1;
+            flow_entry_found = 1;
 
             b_info = (__addr40 bucket_entry_info *)&state_hashtable[hash_value].entry[i].bucket_entry_info_value;
 
@@ -249,16 +233,14 @@ int pif_plugin_lookup_state(EXTRACTED_HEADERS_T *headers, MATCH_DATA_T *match_da
                 mem_incr32((__addr40 void *)&b_info->hit_count);
 
             }
-
-
+            
 //            return PIF_PLUGIN_RETURN_FORWARD;
-
         }
 
     }
 
     if(hash_entry_full == 1 || flow_entry_found == 1){
-	return PIF_PLUGIN_RETURN_FORWARD;   
+        return PIF_PLUGIN_RETURN_FORWARD;
     }
 
 
