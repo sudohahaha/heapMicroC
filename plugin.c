@@ -198,11 +198,11 @@ int pif_plugin_state_update(EXTRACTED_HEADERS_T *headers,
                 largest = reverse; // Initialize largest as root
                 
                 // If left child is larger than root
-                if (2*reverse + 1 < BUCKET_SIZE && heap_arr_rw[heap_arr_index[2*reverse + 1]] > heap_arr_rw[heap_arr_index[largest]])
+                if (2*reverse + 1 < BUCKET_SIZE && heap_arr_r[heap_arr_index[2*reverse + 1]] > heap_arr_r[heap_arr_index[largest]])
                     largest = 2*reverse + 1;
                 
                 // If right child is larger than largest so far
-                if (2*reverse + 2 < BUCKET_SIZE && heap_arr_rw[heap_arr_index[2*reverse + 2]] > heap_arr_rw[heap_arr_index[largest]])
+                if (2*reverse + 2 < BUCKET_SIZE && heap_arr_r[heap_arr_index[2*reverse + 2]] > heap_arr_r[heap_arr_index[largest]])
                     largest = 2*reverse + 2;
                 
                 // If largest is not root
@@ -232,11 +232,11 @@ int pif_plugin_state_update(EXTRACTED_HEADERS_T *headers,
                 largest = root; // Initialize largest as root
                 
                 // If left child is larger than root
-                if (2*root + 1 < reverse && heap_arr_rw[heap_arr_index[2*root + 1]] > heap_arr_rw[heap_arr_index[largest]])
+                if (2*root + 1 < reverse && heap_arr_r[heap_arr_index[2*root + 1]] > heap_arr_r[heap_arr_index[largest]])
                     largest = 2*root + 1;
                 
                 // If right child is larger than largest so far
-                if (2*root + 2 < reverse && heap_arr_rw[heap_arr_index[2*root + 2]] > heap_arr_rw[heap_arr_index[largest]])
+                if (2*root + 2 < reverse && heap_arr_r[heap_arr_index[2*root + 2]] > heap_arr_r[heap_arr_index[largest]])
                     largest = 2*root + 2;
                 
                 // If largest is not root
