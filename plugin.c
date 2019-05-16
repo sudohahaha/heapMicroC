@@ -115,7 +115,7 @@ int pif_plugin_state_update(EXTRACTED_HEADERS_T *headers,
     uint32_t reverse;
 //    uint32_t heap_arr_index[BUCKET_SIZE];
     __xread uint32_t heap_size_r;
-    __xrw uint32_t heap_arr_r[BUCKET_SIZE];
+    __xread uint32_t heap_arr_r[BUCKET_SIZE];
 //    __xread uint32_t suggestion_r[BUCKET_SIZE + 1];
     __xrw uint32_t exportIndex = 0;
 //    uint32_t minimum;
@@ -152,47 +152,53 @@ int pif_plugin_state_update(EXTRACTED_HEADERS_T *headers,
 //    }
     semaphore_down(&global_semaphores[update_hash_value]);
     
-//    mem_read_atomic(heap_arr_r, state_hashtable[update_hash_value].row, sizeof(heap_arr_r)); /* TODO: Read whole bunch at a time */
-    for (i = 0; i < BUCKET_SIZE; i++) {
-        mem_read_atomic(hash_key_r, state_hashtable[update_hash_value].entry[i].key, sizeof(hash_key_r)); /* TODO: Read whole bunch at a time */
-//        mem_read_atomic(&rowValue, &state_hashtable[update_hash_value].row[i], sizeof(rowValue));
-//        heap_arr_r[i] = rowValue;
-//        if(heap_arr_r[exportIndex] >= rowValue){
-//            exportIndex = i;
-//        }
-        if (hash_key_r[0] == update_hash_key[0] &&
-            hash_key_r[1] == update_hash_key[1] &&
-            hash_key_r[2] == update_hash_key[2] ) { /* Hit */
-            __xrw uint32_t count;
-            b_info = &state_hashtable[update_hash_value];
-            count = 1;
-            mem_test_add(&count,&b_info->row[i], 1 << 2);
-            if (count == 0xFFFFFFFF-1) { /* Never incr to 0 or 2^32 */
-                count = 2;
-                mem_add32(&count,&b_info->row[i], 1 << 2);
-            } else if (count == 0xFFFFFFFF) {
-                mem_incr32(&b_info->row[i]);
+    mem_read_atomic(&heap_size_r, &state_hashtable[update_hash_value].heap_size, sizeof(heap_size_r));
+    if(heap_size_r < BUCKET_SIZE){
+        for (i = 0; i < BUCKET_SIZE; i++) {
+            mem_read_atomic(hash_key_r, state_hashtable[update_hash_value].entry[i].key, sizeof(hash_key_r));
+//            if(heap_arr_r == 7){
+//                mem_read_atomic(&rowValue, &state_hashtable[update_hash_value].row[i], sizeof(rowValue));
+//                heap_arr_r[i] = rowValue;
+//            }
+    //        if(heap_arr_r[exportIndex] >= rowValue){
+    //            exportIndex = i;
+    //        }
+            if (hash_key_r[0] == update_hash_key[0] &&
+                hash_key_r[1] == update_hash_key[1] &&
+                hash_key_r[2] == update_hash_key[2] ) { /* Hit */
+                __xrw uint32_t count;
+                b_info = &state_hashtable[update_hash_value];
+                count = 1;
+                mem_test_add(&count,&b_info->row[i], 1 << 2);
+                if (count == 0xFFFFFFFF-1) { /* Never incr to 0 or 2^32 */
+                    count = 2;
+                    mem_add32(&count,&b_info->row[i], 1 << 2);
+                } else if (count == 0xFFFFFFFF) {
+                    mem_incr32(&b_info->row[i]);
+                }
+                break;
             }
-            break;
-        }
-        else if (hash_key_r[0] == 0) {
-            b_info = &state_hashtable[update_hash_value];
-            key_addr =(__addr40 uint32_t *) state_hashtable[update_hash_value].entry[i].key;
-            tmp_b_info = 1;
-            mem_write_atomic(&tmp_b_info, &b_info->row[i], sizeof(tmp_b_info));
-            mem_write_atomic(key_val_rw,(__addr40 void *)key_addr, sizeof(key_val_rw));
-            mem_incr32(&b_info->heap_size);
-            break;
-        }
+            else if (hash_key_r[0] == 0) {
+                b_info = &state_hashtable[update_hash_value];
+                key_addr =(__addr40 uint32_t *) state_hashtable[update_hash_value].entry[i].key;
+                tmp_b_info = 1;
+                mem_write_atomic(&tmp_b_info, &b_info->row[i], sizeof(tmp_b_info));
+                mem_write_atomic(key_val_rw,(__addr40 void *)key_addr, sizeof(key_val_rw));
+                mem_incr32(&b_info->heap_size);
+                break;
+            }
 
+        }
+    }else{
+        mem_read_atomic(heap_arr_r, state_hashtable[update_hash_value].row, sizeof(heap_arr_r));
     }
     semaphore_up(&global_semaphores[update_hash_value]);
     
 //    mem_write_atomic(&exportIndex,&arr, sizeof(exportIndex));
 //    /* If bucket full, drop */
-//
+////
 //    if (i == BUCKET_SIZE){
-//
+//        
 //    }
 
     return PIF_PLUGIN_RETURN_FORWARD;
