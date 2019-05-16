@@ -113,7 +113,7 @@ int pif_plugin_state_update(EXTRACTED_HEADERS_T *headers,
     uint32_t root;
     uint32_t swap;
     uint32_t reverse;
-//    uint32_t heap_arr_index[BUCKET_SIZE];
+    uint32_t heap_arr_index[BUCKET_SIZE];
     __xread uint32_t heap_size_r;
     __xread uint32_t heap_arr_r[BUCKET_SIZE];
 //    __xread uint32_t suggestion_r[BUCKET_SIZE + 1];
@@ -147,9 +147,7 @@ int pif_plugin_state_update(EXTRACTED_HEADERS_T *headers,
     update_hash_value = hash_me_crc32((void *)update_hash_key,sizeof(update_hash_key), 1);
 
     update_hash_value &= (STATE_TABLE_SIZE);
-//    for (i = 0; i < BUCKET_SIZE; i++){
-//        heap_arr_index[i] = i;
-//    }
+    
     semaphore_down(&global_semaphores[update_hash_value]);
     
     mem_read_atomic(&heap_size_r, &state_hashtable[update_hash_value].heap_size, sizeof(heap_size_r));
@@ -191,6 +189,69 @@ int pif_plugin_state_update(EXTRACTED_HEADERS_T *headers,
         }
     }else{
         mem_read_atomic(heap_arr_r, state_hashtable[update_hash_value].row, sizeof(heap_arr_r));
+        for (i = 0; i < BUCKET_SIZE; i++){
+            heap_arr_index[i] = i;
+        }
+        for (j = 0; j <= BUCKET_SIZE / 2 - 1; j++){
+            reverse = BUCKET_SIZE / 2 - 1 - j;
+            while(1){
+                largest = reverse; // Initialize largest as root
+                
+                // If left child is larger than root
+                if (2*reverse + 1 < BUCKET_SIZE && heap_arr_rw[heap_arr_index[2*reverse + 1]] > heap_arr_rw[heap_arr_index[largest]])
+                    largest = 2*reverse + 1;
+                
+                // If right child is larger than largest so far
+                if (2*reverse + 2 < BUCKET_SIZE && heap_arr_rw[heap_arr_index[2*reverse + 2]] > heap_arr_rw[heap_arr_index[largest]])
+                    largest = 2*reverse + 2;
+                
+                // If largest is not root
+                if (largest != reverse)
+                {
+                    swap = heap_arr_index[largest];
+                    heap_arr_index[largest] = heap_arr_index[reverse];
+                    heap_arr_index[reverse] = swap;
+                }else{
+                    break;
+                }
+                reverse = largest;
+            }
+        }
+        
+        // One by one extract an element from heap
+        for (j = 0; j <= BUCKET_SIZE - 1; j++)
+        {
+            reverse = BUCKET_SIZE - 1 - j;
+            // Move current root to end
+            swap = heap_arr_index[0];
+            heap_arr_index[0] = heap_arr_index[reverse];
+            heap_arr_index[reverse] = swap;
+            
+            root = 0;
+            while(1){
+                largest = root; // Initialize largest as root
+                
+                // If left child is larger than root
+                if (2*root + 1 < reverse && heap_arr_rw[heap_arr_index[2*root + 1]] > heap_arr_rw[heap_arr_index[largest]])
+                    largest = 2*root + 1;
+                
+                // If right child is larger than largest so far
+                if (2*root + 2 < reverse && heap_arr_rw[heap_arr_index[2*root + 2]] > heap_arr_rw[heap_arr_index[largest]])
+                    largest = 2*root + 2;
+                
+                // If largest is not root
+                if (largest != root)
+                {
+                    swap = heap_arr_index[largest];
+                    heap_arr_index[largest] = heap_arr_index[root];
+                    heap_arr_index[root] = swap;
+                }else{
+                    break;
+                }
+                root = largest;
+            }
+        }
+        
     }
     semaphore_up(&global_semaphores[update_hash_value]);
     
@@ -198,7 +259,7 @@ int pif_plugin_state_update(EXTRACTED_HEADERS_T *headers,
 //    /* If bucket full, drop */
 ////
 //    if (i == BUCKET_SIZE){
-//        
+//
 //    }
 
     return PIF_PLUGIN_RETURN_FORWARD;
