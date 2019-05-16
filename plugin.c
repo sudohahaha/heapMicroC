@@ -116,8 +116,8 @@ int pif_plugin_state_update(EXTRACTED_HEADERS_T *headers,
     uint32_t heap_arr_index[BUCKET_SIZE];
     __xread uint32_t heap_size_r;
     __xread uint32_t heap_arr_r[BUCKET_SIZE];
-//    __xread uint32_t suggestion_r[BUCKET_SIZE + 1];
-    __xrw uint32_t exportIndex = 0;
+//    __xrw uint32_t suggestion_rw[3] = {0,0,0};
+    __xrw uint32_t exportReset;
 //    uint32_t minimum;
     __xread uint32_t rowValue;
 
@@ -150,108 +150,110 @@ int pif_plugin_state_update(EXTRACTED_HEADERS_T *headers,
     
     semaphore_down(&global_semaphores[update_hash_value]);
     
+    
+    for (i = 0; i < BUCKET_SIZE; i++) {
+        mem_read_atomic(hash_key_r, state_hashtable[update_hash_value].entry[i].key, sizeof(hash_key_r));
+        
+        if (hash_key_r[0] == update_hash_key[0] &&
+            hash_key_r[1] == update_hash_key[1] &&
+            hash_key_r[2] == update_hash_key[2] ) { /* Hit */
+            __xrw uint32_t count;
+            b_info = &state_hashtable[update_hash_value];
+            count = 1;
+            mem_test_add(&count,&b_info->row[i], 1 << 2);
+            if (count == 0xFFFFFFFF-1) { /* Never incr to 0 or 2^32 */
+                count = 2;
+                mem_add32(&count,&b_info->row[i], 1 << 2);
+            } else if (count == 0xFFFFFFFF) {
+                mem_incr32(&b_info->row[i]);
+            }
+            break;
+        }
+        else if (hash_key_r[0] == 0) {
+            b_info = &state_hashtable[update_hash_value];
+            key_addr =(__addr40 uint32_t *) state_hashtable[update_hash_value].entry[i].key;
+            tmp_b_info = 1;
+            mem_write_atomic(&tmp_b_info, &b_info->row[i], sizeof(tmp_b_info));
+            mem_write_atomic(key_val_rw,(__addr40 void *)key_addr, sizeof(key_val_rw));
+            mem_incr32(&b_info->heap_size);
+            break;
+        }
+    }
     mem_read_atomic(&heap_size_r, &state_hashtable[update_hash_value].heap_size, sizeof(heap_size_r));
-    if(heap_size_r < BUCKET_SIZE){
-        for (i = 0; i < BUCKET_SIZE; i++) {
-            mem_read_atomic(hash_key_r, state_hashtable[update_hash_value].entry[i].key, sizeof(hash_key_r));
-//            if(heap_arr_r == 7){
-//                mem_read_atomic(&rowValue, &state_hashtable[update_hash_value].row[i], sizeof(rowValue));
-//                heap_arr_r[i] = rowValue;
+//    }else{
+//        mem_read_atomic(heap_arr_r, state_hashtable[update_hash_value].row, sizeof(heap_arr_r));
+//        for (i = 0; i < BUCKET_SIZE; i++){
+//            heap_arr_index[i] = i;
+//        }
+//        for (j = 0; j <= BUCKET_SIZE / 2 - 1; j++){
+//            reverse = BUCKET_SIZE / 2 - 1 - j;
+//            while(1){
+//                largest = reverse; // Initialize largest as root
+//
+//                // If left child is larger than root
+//                if (2*reverse + 1 < BUCKET_SIZE && heap_arr_r[heap_arr_index[2*reverse + 1]] > heap_arr_r[heap_arr_index[largest]])
+//                    largest = 2*reverse + 1;
+//
+//                // If right child is larger than largest so far
+//                if (2*reverse + 2 < BUCKET_SIZE && heap_arr_r[heap_arr_index[2*reverse + 2]] > heap_arr_r[heap_arr_index[largest]])
+//                    largest = 2*reverse + 2;
+//
+//                // If largest is not root
+//                if (largest != reverse)
+//                {
+//                    swap = heap_arr_index[largest];
+//                    heap_arr_index[largest] = heap_arr_index[reverse];
+//                    heap_arr_index[reverse] = swap;
+//                }else{
+//                    break;
+//                }
+//                reverse = largest;
 //            }
-    //        if(heap_arr_r[exportIndex] >= rowValue){
-    //            exportIndex = i;
-    //        }
-            if (hash_key_r[0] == update_hash_key[0] &&
-                hash_key_r[1] == update_hash_key[1] &&
-                hash_key_r[2] == update_hash_key[2] ) { /* Hit */
-                __xrw uint32_t count;
-                b_info = &state_hashtable[update_hash_value];
-                count = 1;
-                mem_test_add(&count,&b_info->row[i], 1 << 2);
-                if (count == 0xFFFFFFFF-1) { /* Never incr to 0 or 2^32 */
-                    count = 2;
-                    mem_add32(&count,&b_info->row[i], 1 << 2);
-                } else if (count == 0xFFFFFFFF) {
-                    mem_incr32(&b_info->row[i]);
-                }
-                break;
-            }
-            else if (hash_key_r[0] == 0) {
-                b_info = &state_hashtable[update_hash_value];
-                key_addr =(__addr40 uint32_t *) state_hashtable[update_hash_value].entry[i].key;
-                tmp_b_info = 1;
-                mem_write_atomic(&tmp_b_info, &b_info->row[i], sizeof(tmp_b_info));
-                mem_write_atomic(key_val_rw,(__addr40 void *)key_addr, sizeof(key_val_rw));
-                mem_incr32(&b_info->heap_size);
-                break;
-            }
+//        }
+//
+//        // One by one extract an element from heap
+//        for (j = 0; j <= BUCKET_SIZE - 1; j++)
+//        {
+//            reverse = BUCKET_SIZE - 1 - j;
+//            // Move current root to end
+//            swap = heap_arr_index[0];
+//            heap_arr_index[0] = heap_arr_index[reverse];
+//            heap_arr_index[reverse] = swap;
+//
+//            root = 0;
+//            while(1){
+//                largest = root; // Initialize largest as root
+//
+//                // If left child is larger than root
+//                if (2*root + 1 < reverse && heap_arr_r[heap_arr_index[2*root + 1]] > heap_arr_r[heap_arr_index[largest]])
+//                    largest = 2*root + 1;
+//
+//                // If right child is larger than largest so far
+//                if (2*root + 2 < reverse && heap_arr_r[heap_arr_index[2*root + 2]] > heap_arr_r[heap_arr_index[largest]])
+//                    largest = 2*root + 2;
+//
+//                // If largest is not root
+//                if (largest != root)
+//                {
+//                    swap = heap_arr_index[largest];
+//                    heap_arr_index[largest] = heap_arr_index[root];
+//                    heap_arr_index[root] = swap;
+//                }else{
+//                    break;
+//                }
+//                root = largest;
+//            }
+//        }
+    if(heap_size_r == BUCKET_SIZE){
+//        mem_read_atomic(heap_arr_r, state_hashtable[update_hash_value].row, sizeof(heap_arr_r));
+//        b_info = &state_hashtable[update_hash_value];
+//        key_addr =(__addr40 uint32_t *) state_hashtable[update_hash_value].entry[0].key;
+//        tmp_b_info = 1;
+//        mem_write_atomic(&tmp_b_info, &b_info->row[0], sizeof(tmp_b_info));
+        exportReset = heap_size_r;
+        mem_write_atomic(&exportReset,&arr, sizeof(exportReset));
+//        mem_write_atomic(key_val_rw,(__addr40 void *)key_addr, sizeof(key_val_rw));
 
-        }
-    }else{
-        mem_read_atomic(heap_arr_r, state_hashtable[update_hash_value].row, sizeof(heap_arr_r));
-        for (i = 0; i < BUCKET_SIZE; i++){
-            heap_arr_index[i] = i;
-        }
-        for (j = 0; j <= BUCKET_SIZE / 2 - 1; j++){
-            reverse = BUCKET_SIZE / 2 - 1 - j;
-            while(1){
-                largest = reverse; // Initialize largest as root
-                
-                // If left child is larger than root
-                if (2*reverse + 1 < BUCKET_SIZE && heap_arr_r[heap_arr_index[2*reverse + 1]] > heap_arr_r[heap_arr_index[largest]])
-                    largest = 2*reverse + 1;
-                
-                // If right child is larger than largest so far
-                if (2*reverse + 2 < BUCKET_SIZE && heap_arr_r[heap_arr_index[2*reverse + 2]] > heap_arr_r[heap_arr_index[largest]])
-                    largest = 2*reverse + 2;
-                
-                // If largest is not root
-                if (largest != reverse)
-                {
-                    swap = heap_arr_index[largest];
-                    heap_arr_index[largest] = heap_arr_index[reverse];
-                    heap_arr_index[reverse] = swap;
-                }else{
-                    break;
-                }
-                reverse = largest;
-            }
-        }
-        
-        // One by one extract an element from heap
-        for (j = 0; j <= BUCKET_SIZE - 1; j++)
-        {
-            reverse = BUCKET_SIZE - 1 - j;
-            // Move current root to end
-            swap = heap_arr_index[0];
-            heap_arr_index[0] = heap_arr_index[reverse];
-            heap_arr_index[reverse] = swap;
-            
-            root = 0;
-            while(1){
-                largest = root; // Initialize largest as root
-                
-                // If left child is larger than root
-                if (2*root + 1 < reverse && heap_arr_r[heap_arr_index[2*root + 1]] > heap_arr_r[heap_arr_index[largest]])
-                    largest = 2*root + 1;
-                
-                // If right child is larger than largest so far
-                if (2*root + 2 < reverse && heap_arr_r[heap_arr_index[2*root + 2]] > heap_arr_r[heap_arr_index[largest]])
-                    largest = 2*root + 2;
-                
-                // If largest is not root
-                if (largest != root)
-                {
-                    swap = heap_arr_index[largest];
-                    heap_arr_index[largest] = heap_arr_index[root];
-                    heap_arr_index[root] = swap;
-                }else{
-                    break;
-                }
-                root = largest;
-            }
-        }
-        
     }
     semaphore_up(&global_semaphores[update_hash_value]);
     
