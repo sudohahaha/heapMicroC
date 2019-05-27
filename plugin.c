@@ -15,7 +15,9 @@
 #include <nfp/me.h>
 
 #include <nfp.h>
+#include <stdlib.h>
 
+#include <stdint.h>
 
 #define BUCKET_SIZE 7
 
@@ -31,10 +33,16 @@
 #define VAL_64X VAL_32X, VAL_32X
 #define VAL_128X VAL_64X, VAL_64X
 #define VAL_256X VAL_128X, VAL_128X
-
+#define VAL_512X VAL_256X, VAL_256X
+#define VAL_1024X VAL_512X, VAL_512X
+#define VAL_2048X VAL_1024X, VAL_1024X
+#define VAL_4096X VAL_2048X, VAL_2048X
 typedef struct bucket_entry {
 
     uint32_t key[3]; /* ip1, ip2, ports */
+    uint32_t key0;
+    uint32_t key1;
+    uint32_t key2;
 
 }bucket_entry;
 
@@ -55,6 +63,8 @@ typedef struct suggested_export {
 volatile __emem __export uint32_t global_semaphores[STATE_TABLE_SIZE + 1] = {VAL_256X};
 __shared __export __addr40 __emem bucket_list state_hashtable[STATE_TABLE_SIZE + 1];
 __shared __export __addr40 __emem uint32_t arr;
+__shared __export __addr40 __emem uint32_t arr1;
+__shared __export __addr40 __emem uint32_t arr2;
 void semaphore_down(volatile __declspec(mem addr40) void * addr) {
     unsigned int addr_hi, addr_lo;
     __declspec(read_write_reg) int xfer;
@@ -80,6 +90,9 @@ void semaphore_up(volatile __declspec(mem addr40) void * addr) {
         mem[incr, --, addr_hi, <<8, addr_lo, 1];
     }
 }
+
+static uint8_t first = 1;
+
 int pif_plugin_state_update(EXTRACTED_HEADERS_T *headers,
 
                         MATCH_DATA_T *match_data)
@@ -104,9 +117,9 @@ int pif_plugin_state_update(EXTRACTED_HEADERS_T *headers,
     __xread uint32_t hash_key_r[3];
     uint32_t i = 0;
     uint32_t j = 0;
-    
-    __xwrite uint32_t heap_size_rw;
-    __xwrite uint32_t temp = 0;
+    uint32_t z = 0;
+//    __xwrite uint32_t heap_size_rw;
+//    __xwrite uint32_t temp = 0;
     __addr40 __emem bucket_list *b_info;
 
     uint32_t largest;
@@ -117,10 +130,14 @@ int pif_plugin_state_update(EXTRACTED_HEADERS_T *headers,
     __xread uint32_t heap_size_r;
     __xread uint32_t heap_arr_r[BUCKET_SIZE];
 //    __xrw uint32_t suggestion_rw[3] = {0,0,0};
-    __xrw uint32_t exportReset;
+    __xrw uint64_t exportReset = 0;
 //    uint32_t minimum;
-    __xread uint32_t rowValue;
-
+    __xrw uint32_t index_check;
+    __xrw uint32_t index_check1;
+    __xrw uint32_t index_check2;
+    __xrw uint32_t randval;
+    uint32_t localRandVal;
+    __xrw uint64_t time;
     ipv4 = pif_plugin_hdr_get_ipv4(headers);
 
     udp = pif_plugin_hdr_get_udp(headers);
@@ -130,10 +147,13 @@ int pif_plugin_state_update(EXTRACTED_HEADERS_T *headers,
     /* TODO: Add another field to indicate direction ?*/
 
     update_hash_key[0] = ipv4->srcAddr;
+    index_check =ipv4->srcAddr;
 
     update_hash_key[1] = ipv4->dstAddr;
+    index_check1 =ipv4->dstAddr;
 
     update_hash_key[2] = (udp->srcPort << 16) | udp->dstPort;
+    index_check2 =(udp->srcPort << 16) | udp->dstPort;
 
 
 
@@ -148,12 +168,14 @@ int pif_plugin_state_update(EXTRACTED_HEADERS_T *headers,
 
     update_hash_value &= (STATE_TABLE_SIZE);
     
-    semaphore_down(&global_semaphores[update_hash_value]);
     
+    semaphore_down(&global_semaphores[update_hash_value]);
+//    mem_read_atomic(&heap_size_r, &state_hashtable[update_hash_value].heap_size, sizeof(heap_size_r));
+//    if(heap_size_r < BUCKET_SIZE){
     
     for (i = 0; i < BUCKET_SIZE; i++) {
         mem_read_atomic(hash_key_r, state_hashtable[update_hash_value].entry[i].key, sizeof(hash_key_r));
-        
+//        mem_incr32(&b_info->heap_size);
         if (hash_key_r[0] == update_hash_key[0] &&
             hash_key_r[1] == update_hash_key[1] &&
             hash_key_r[2] == update_hash_key[2] ) { /* Hit */
@@ -171,19 +193,56 @@ int pif_plugin_state_update(EXTRACTED_HEADERS_T *headers,
         }
         else if (hash_key_r[0] == 0) {
             b_info = &state_hashtable[update_hash_value];
-            key_addr =(__addr40 uint32_t *) state_hashtable[update_hash_value].entry[i].key;
+//            key_addr =(__addr40 uint32_t *) state_hashtable[update_hash_value].entry[i].key;
             tmp_b_info = 1;
             mem_write_atomic(&tmp_b_info, &b_info->row[i], sizeof(tmp_b_info));
-            mem_write_atomic(key_val_rw,(__addr40 void *)key_addr, sizeof(key_val_rw));
+//            mem_write_atomic(key_val_rw,(__addr40 void *)key_addr, sizeof(key_val_rw));
+            mem_write_atomic(&index_check,&state_hashtable[update_hash_value].entry[i].key0, sizeof(index_check));
+            mem_write_atomic(&index_check1,&state_hashtable[update_hash_value].entry[i].key1, sizeof(index_check1));
+            mem_write_atomic(&index_check2,&state_hashtable[update_hash_value].entry[i].key2, sizeof(index_check2));
             mem_incr32(&b_info->heap_size);
             break;
         }
+//        mem_write_atomic(&index_check,&state_hashtable[update_hash_value].entry[6].key0, sizeof(index_check));
+//        mem_write_atomic(&index_check1,&state_hashtable[update_hash_value].entry[6].key1, sizeof(index_check1));
+//        mem_write_atomic(&index_check2,&state_hashtable[update_hash_value].entry[6].key2, sizeof(index_check2));
     }
-    mem_read_atomic(&heap_size_r, &state_hashtable[update_hash_value].heap_size, sizeof(heap_size_r));
-//    }else{
+    if (i == BUCKET_SIZE){
+//        exportReset = 0;
+//        if (first) {
+//            first = 0;
+//            local_csr_write (local_csr_pseudo_random_number,(local_csr_read(local_csr_timestamp_low) & 0xffff) + 1);
+//            local_csr_read(local_csr_pseudo_random_number);
+//        }
+//            if(randval >= 3){
+                //            key_addr =(__addr40 uint32_t *) state_hashtable[update_hash_value].entry[0].key;
+                //            mem_write_atomic(key_val_rw,(__addr40 void *)key_addr, sizeof(key_val_rw));
+//            }
+//        randval = local_csr_read(local_csr_pseudo_random_number) % 7;
+//        if(local_csr_read(local_csr_pseudo_random_number) % 7 >= 3){
+//            mem_write_atomic(&randval, &arr, sizeof(randval));
+        mem_write_atomic(&index_check,&state_hashtable[update_hash_value].entry[6].key0, sizeof(index_check));
+        mem_write_atomic(&index_check1,&state_hashtable[update_hash_value].entry[6].key1, sizeof(index_check1));
+        mem_write_atomic(&index_check2,&state_hashtable[update_hash_value].entry[6].key2, sizeof(index_check2));
+
+//        }
+    }
+
+//    }
+    semaphore_up(&global_semaphores[update_hash_value]);
+//    key_val_rw[0] = 0;
+//    key_val_rw[1] = 0;
+//    key_val_rw[2] = 0;
+    
+//    mem_incr32(&arr);
+//    mem_write_atomic(&exportIndex,&arr, sizeof(exportIndex));
+//    /* If bucket full, drop */
+//    if (i == BUCKET_SIZE){
+//    mem_read_atomic(&heap_size_r, &state_hashtable[update_hash_value].heap_size, sizeof(heap_size_r));
+//    if(heap_size_r == BUCKET_SIZE){
 //        mem_read_atomic(heap_arr_r, state_hashtable[update_hash_value].row, sizeof(heap_arr_r));
-//        for (i = 0; i < BUCKET_SIZE; i++){
-//            heap_arr_index[i] = i;
+//        for (z = 0; z < BUCKET_SIZE; z++){
+//            heap_arr_index[z] = z;
 //        }
 //        for (j = 0; j <= BUCKET_SIZE / 2 - 1; j++){
 //            reverse = BUCKET_SIZE / 2 - 1 - j;
@@ -210,8 +269,8 @@ int pif_plugin_state_update(EXTRACTED_HEADERS_T *headers,
 //                reverse = largest;
 //            }
 //        }
-//
-//        // One by one extract an element from heap
+////
+////        // One by one extract an element from heap
 //        for (j = 0; j <= BUCKET_SIZE - 1; j++)
 //        {
 //            reverse = BUCKET_SIZE - 1 - j;
@@ -244,25 +303,23 @@ int pif_plugin_state_update(EXTRACTED_HEADERS_T *headers,
 //                root = largest;
 //            }
 //        }
-    if(heap_size_r == BUCKET_SIZE){
-//        mem_read_atomic(heap_arr_r, state_hashtable[update_hash_value].row, sizeof(heap_arr_r));
-//        b_info = &state_hashtable[update_hash_value];
-//        key_addr =(__addr40 uint32_t *) state_hashtable[update_hash_value].entry[0].key;
-//        tmp_b_info = 1;
-//        mem_write_atomic(&tmp_b_info, &b_info->row[0], sizeof(tmp_b_info));
-        exportReset = heap_size_r;
-        mem_write_atomic(&exportReset,&arr, sizeof(exportReset));
-//        mem_write_atomic(key_val_rw,(__addr40 void *)key_addr, sizeof(key_val_rw));
-
-    }
-    semaphore_up(&global_semaphores[update_hash_value]);
-    
-//    mem_write_atomic(&exportIndex,&arr, sizeof(exportIndex));
-//    /* If bucket full, drop */
-////
-//    if (i == BUCKET_SIZE){
+//    index_check = 1;
+////    mem_write_atomic(&index_check,&arr, sizeof(index_check));
+//    b_info = &state_hashtable[update_hash_value];
+//    key_addr =(__addr40 uint32_t *) state_hashtable[update_hash_value].entry[index_check].key;
+//    tmp_b_info = 1;
+//    mem_write_atomic(&tmp_b_info, &b_info->row[index_check], sizeof(tmp_b_info));
+//    mem_write_atomic(key_val_rw,(__addr40 void *)key_addr, sizeof(key_val_rw));
+//            mem_decr32(&b_info->heap_size);
+//    //        if(update_hash_value == STATE_TABLE_SIZE){
+//    //            index_check = heap_arr_index[1];
+//    //            mem_write_atomic(&index_check,&arr, sizeof(index_check));}
 //
+//
+//        }
 //    }
+
+    
 
     return PIF_PLUGIN_RETURN_FORWARD;
 
@@ -286,6 +343,9 @@ int pif_plugin_lookup_state(EXTRACTED_HEADERS_T *headers, MATCH_DATA_T *match_da
 
     uint32_t i;
     __xrw uint32_t count;
+    __addr40 uint32_t *key_addr;
+    __xrw uint64_t exportReset = 0;
+    __xread uint32_t heap_size_r;
 
     ipv4 = pif_plugin_hdr_get_ipv4(headers);
 
@@ -339,6 +399,7 @@ int pif_plugin_lookup_state(EXTRACTED_HEADERS_T *headers, MATCH_DATA_T *match_da
         }
 
     }
+//    mem_incr32(&arr);
 
   if (pif_plugin_state_update(headers, match_data) == PIF_PLUGIN_RETURN_DROP) {
 
